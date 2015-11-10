@@ -1,0 +1,240 @@
+##########################################################################
+# vim:syntax=cf3:tabstop=2:shiftwidth=2:softtabstop=2:smarttab:expandtab
+#
+# Bundles for handling firewalls
+#
+
+body file control
+{
+  namespace => "firewalld";
+}
+
+bundle agent default_zone(zone)
+{
+  vars:
+      "firewall_cmd" string => "$(default:global_paths.firewall_cmd)";
+      "default_zone" string => execresult("$(firewall_cmd) --get-default-zone", "noshell");
+
+  classes:
+      "$(zone)_not_default" not => strcmp("$(zone)", "$(default_zone)");
+
+  commands:
+      "$(firewall_cmd) --quiet --set-default-zone=$(zone)"
+        ifvarclass => "$(zone)_not_default",
+        classes    => default:if_else("$(zone)_succeeded", "$(zone)_failed");
+
+  reports:
+    any::
+      "Failed to set default zone to $(zone)"
+        ifvarclass => "$(zone)_failed";
+
+    inform_mode::
+      "firewalld default zone: $(zone)"
+        ifvarclass => "$(zone)_succeeded";
+}
+
+bundle agent add_services(service, zone)
+{
+  vars:
+      "cservice"     string => canonify("$(service)");
+      "firewall_cmd" string => "$(default:global_paths.firewall_cmd)";
+
+  classes:
+      "$(cservice)_absent"
+        not => returnszero("$(firewall_cmd) --quiet --zone=$(zone) --query-service=$(service)", "noshell");
+
+  commands:
+      "$(firewall_cmd) --quiet --permanent --zone=$(zone) --add-service=$(service)"
+        ifvarclass => "$(cservice)_absent",
+        classes    => if_else("reload_firewalld", "$(cservice)_failed");
+
+      "$(firewall_cmd) --quiet --reload"
+        ifvarclass => "reload_firewalld",
+        classes    => if_notkept("reload_firewalld_failed");
+
+  reports:
+      "Failed to add service $(service) to zone $(zone)"
+        ifvarclass => "$(cservice)_failed";
+
+      "Failed to reload firewalld"
+        ifvarclass => "reload_firewalld_failed";
+
+    inform_mode::
+      "Service $(service) in zone $(zone)"
+        ifvarclass => not("$(cservice)_failed");
+
+      "Firewalld reloaded successfully"
+        ifvarclass => and("reload_firewalld", not("reload_firewalld_failed"));
+}
+
+bundle agent add_sources(source, zone)
+{
+  vars:
+      "firewall_cmd"        string => "$(default:global_paths.firewall_cmd)";
+      "c_source[$(source)]" string => canonify("$(source)");
+
+  classes:
+      "$(c_source[$(source)])_absent"
+        not => returnszero("$(firewall_cmd) --quiet --zone=$(zone) --query-source=$(source)", "noshell");
+
+  commands:
+      "$(firewall_cmd) --quiet --permanent --zone=$(zone) --add-source=$(source)"
+        ifvarclass => "$(c_source[$(source)])_absent",
+        classes    => if_else("reload_firewalld", "$(c_source[$(source)])_failed");
+
+      "$(firewall_cmd) --quiet --reload"
+        ifvarclass => "reload_firewalld",
+        classes    => if_notkept("reload_firewalld_failed");
+
+  reports:
+      "Failed to add source $(source) to zone $(zone)"
+        ifvarclass => "$(c_source[$(source)])_failed";
+
+      "Failed to reload firewalld"
+        ifvarclass => "reload_firewalld_failed";
+
+    inform_mode::
+      "Source $(source) bound to zone $(zone)"
+        ifvarclass => not("$(c_source[$(source)])_failed");
+
+      "Firewalld reloaded successfully"
+        ifvarclass => and("reload_firewalld", not("reload_firewalld_failed"));
+}
+
+bundle agent add_ports(i, d)
+{
+  vars:
+    any::
+      "firewall_cmd"
+        string => "$(default:global_paths.firewall_cmd)";
+
+      "c[$(d[$(i)][ports])]"
+        string => canonify("$(d[$(i)][ports])");
+
+  classes:
+    any::
+      "$(c[$(d[$(i)][ports])])_absent"
+        not => returnszero("$(firewall_cmd) --quiet --zone=$(d[$(i)][zone]) --query-port=$(d[$(i)][ports])", "noshell");
+
+  commands:
+      "$(firewall_cmd) --quiet --permanent --zone=$(d[$(i)][zone]) --add-port=$(d[$(i)][ports])"
+        ifvarclass => "$(c[$(d[$(i)][ports])])_absent",
+        classes    => if_else("reload_firewalld", "$(c[$(d[$(i)][ports])])_failed");
+
+      "$(firewall_cmd) --quiet --reload"
+        ifvarclass => "reload_firewalld",
+        classes    => if_notkept("reload_firewalld_failed");
+
+  reports:
+    any::
+      "Failed to add port $(d[$(i)][ports]) to zone $(d[$(i)][zone])"
+        ifvarclass => "$(c[$(d[$(i)][ports])])_failed";
+
+      "Failed to reload firewalld"
+        ifvarclass => "reload_firewalld_failed";
+
+    inform_mode::
+      "Port $(d[$(i)][ports]) open in zone $(d[$(i)][zone])"
+        ifvarclass => not("$(c[$(d[$(i)][ports])])_failed");
+
+      "Firewalld reloaded successfully"
+        ifvarclass => and("reload_firewalld", not("reload_firewalld_failed"));
+}
+
+bundle agent add_richrules(richrule, zone)
+{
+  vars:
+      "firewall_cmd"            string => "$(default:global_paths.firewall_cmd)";
+      "c_richrule[$(richrule)]" string => canonify("$(richrule)");
+
+  classes:
+      "$(c_richrule[$(richrule)])_absent"
+        not => returnszero("$(firewall_cmd) --quiet --zone=$(zone) --query-rich-rule='$(richrule)'", "useshell");
+
+  commands:
+      "$(firewall_cmd) --quiet --permanent --zone=$(zone) --add-rich-rule='$(richrule)'"
+        contain    => default:in_shell,
+        ifvarclass => "$(c_richrule[$(richrule)])_absent",
+        classes    => if_else("reload_firewalld", "$(c_richrule[$(richrule)])_failed");
+
+      "$(firewall_cmd) --quiet --reload"
+        ifvarclass => "reload_firewalld",
+        classes    => if_notkept("reload_firewalld_failed");
+
+  reports:
+      "Failed to add rich rule $(richrule) to zone $(zone)"
+        ifvarclass => "$(c_richrule[$(richrule)])_failed";
+
+      "Failed to reload firewalld"
+        ifvarclass => "reload_firewalld_failed";
+
+    inform_mode::
+      "Rich rule $(richrule) opened in zone $(zone)"
+        ifvarclass => not("$(c_richrule[$(richrule)])_failed");
+
+      "Firewalld reloaded successfully"
+        ifvarclass => and("reload_firewalld", not("reload_firewalld_failed"));
+}
+
+bundle agent add_directs(direct, type, reload)
+{
+  vars:
+      "firewall_cmd"        string => "$(default:global_paths.firewall_cmd)";
+      "c_direct[$(direct)]" string => canonify("$(direct)");
+
+    redhat_7|centos_7::
+      "srv"                 string => "firewalld.service";
+
+  classes:
+      "direct_$(type)" expression => "any";
+      "bad_type"              not => "direct_chain|direct_rule";
+
+      "$(c_direct[$(direct)])_absent"
+               not => returnszero("$(firewall_cmd) --quiet --direct --query-$(type) $(direct)", "noshell"),
+        ifvarclass => not("bad_type");
+
+  commands:
+      "$(firewall_cmd) --quiet --permanent --direct --add-$(type) $(direct)"
+        ifvarclass => "$(c_direct[$(direct)])_absent",
+        classes    => if_else("restart_firewalld", "$(c_direct[$(direct)])_failed");
+
+      "$(firewall_cmd) --quiet --direct --add-$(type) $(direct)"
+        ifvarclass => and(not("$(reload)"), "$(c_direct[$(direct)])_absent"),
+        classes    => if_notkept("$(c_direct[$(direct)])_failed");
+
+  methods:
+      "restart_firewalld"
+        usebundle  => default:standard_services("$(srv)", "restart"),
+        ifvarclass => and("restart_firewalld", "$(reload)");
+
+  reports:
+      "Failed to add direct $(type): $(direct)"
+        ifvarclass => "$(c_direct[$(direct)])_failed";
+
+      "Bad type passed to bundle: $(type)"
+        ifvarclass => "bad_type";
+
+    inform_mode::
+      "Firewalld direct $(type): $(direct)"
+        ifvarclass => not("$(c_direct[$(direct)])_failed");
+}
+
+# Helper bodies
+# These are moslty locally-scoped versions of those in the stdlib
+body classes if_notkept(x)
+{
+  scope           => "bundle";
+  repair_failed   => { "$(x)" };
+  repair_denied   => { "$(x)" };
+  repair_timeout  => { "$(x)" };
+}
+
+body classes if_else(yes,no)
+{
+  scope            => "bundle";
+  promise_kept     => { "$(yes)" };
+  promise_repaired => { "$(yes)" };
+  repair_failed    => { "$(no)" };
+  repair_denied    => { "$(no)" };
+  repair_timeout   => { "$(no)" };
+}
