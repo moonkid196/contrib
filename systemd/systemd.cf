@@ -1,0 +1,42 @@
+##########################################################################
+# vim:syntax=cf3:tabstop=2:shiftwidth=2:softtabstop=2:smarttab:expandtab
+#
+# Bundles for non-service, systemd activities
+#
+
+body file control
+{
+  inputs    => {
+                "$(sys.libdir)/stdlib.cf"
+               };
+  namespace => "systemd";
+}
+
+bundle agent set_target(target)
+{
+  vars:
+    default:systemd::
+      "systemctl"
+        string => "$(default:paths.systemctl) --no-ask-password --global --system --quiet";
+
+      "target_info"
+        slist => string_split(execresult("$(systemctl) show $(target).target", "noshell"), "\n", "150");
+
+      "default_target"
+        string => execresult("$(systemctl) get-default", "noshell");
+
+  classes:
+    default:systemd::
+      "$(target)_can_isolate" expression => reglist(@(target_info), "CanIsolate=yes");
+      "$(target)_inactive"           not => reglist(@(target_info), "ActiveState=active");
+      "$(target)_loaded"      expression => reglist(@(target_info), "LoadState=loaded");
+      "$(target)_not_default"        not => strcmp("$(target).target", "$(default_target)");
+
+  commands:
+    default:systemd::
+      "$(systemctl) set-default $(target).target"
+        ifvarclass => and("$(target)_not_default", "$(target)_loaded", "$(target)_can_isolate");
+
+      "$(systemctl) isolate $(target).target"
+        ifvarclass => and("$(target)_inactive", "$(target)_loaded", "$(target)_can_isolate");
+}
