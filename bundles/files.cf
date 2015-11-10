@@ -1,0 +1,37 @@
+##########################################################################
+# vim:syntax=cf3:tabstop=2:shiftwidth=2:softtabstop=2:smarttab:expandtab
+#
+# Bundles for manipulating files
+#
+
+body file control
+{
+  namespace => "files";
+}
+
+# Merges a set of files, listed in slist's and tagged, into a destination file
+bundle agent merge_into(tag, dest)
+{
+  vars:
+    any::
+      "list_vars[$(tag)]" slist => variablesmatching(".*", "$(tag)");
+      "all_lists"          data => parsejson('[]'), policy => "free";
+      "all_lists"
+          data => mergedata("all_lists", "$(list_vars[$(tag)])"),
+        policy => "free";
+
+  files:
+    any::
+      "$(dest)"
+        comment       => "Ensure $(dest) is populated",
+        handle        => "eecs_merge_into_files_$(tag)",
+        create        => "true",
+        edit_defaults => default:empty,
+        edit_line     => default:insert_file(@(all_lists)),
+        classes       => default:scoped_classes_generic("bundle", "merge_into_$(tag)");
+
+  reports:
+    inform_mode::
+      "File $(dest) was populated with files tagged with $(tag)"
+        ifvarclass => "merge_into_$(tag)_ok)";
+}
