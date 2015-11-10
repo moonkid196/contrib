@@ -23,7 +23,7 @@ created to manage (whether I make them or someone else):
   includes at least the following:
   - PIP package handling
   - YUM groups package handling
-  Some perl/CPAN or ruby-gems would be good contributions
+  - Some perl/CPAN or ruby-gems would be good contributions
 - Some of the more interesting *systemd* features (via *unit files*) would be
   interesting to have (e.g. the *systemd timers*)
 
