@@ -12,7 +12,7 @@ body file control
   namespace => "systemd";
 }
 
-bundle agent set_target(target)
+bundle agent target(target)
 {
   vars:
     default:systemd::
